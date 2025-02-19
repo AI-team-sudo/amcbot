@@ -135,6 +135,7 @@ if prompt := st.chat_input("What would you like to know?"):
         search_results = search_pinecone(prompt)
         context = "\n".join([result.metadata.get('text', '') for result in search_results.matches])
 
+ 
     # Generate response
     with st.chat_message("assistant"):
         with st.spinner('Generating response...'):
@@ -160,7 +161,7 @@ if prompt := st.chat_input("What would you like to know?"):
                 st.session_state[f"translated_{translation_key}"] = True
 
             # Show translation if button was clicked
-            if st.session_state[f"translated_{translation_key}":
+            if st.session_state[f"translated_{translation_key}"]:  # Fixed syntax error here
                 try:
                     with st.spinner('Translating to Gujarati...'):
                         gujarati_response = translate_text(response, 'gu')
@@ -176,6 +177,7 @@ if prompt := st.chat_input("What would you like to know?"):
                     st.error("Please try again or contact support if the issue persists.")
 
         st.session_state.messages.append({"role": "assistant", "content": response})
+   
 
 # Sidebar with additional information
 with st.sidebar:
