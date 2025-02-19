@@ -3,7 +3,7 @@ import openai
 from llama_index import VectorStoreIndex, ServiceContext
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.llms.openai import OpenAI
-import pinecone
+from pinecone import Pinecone
 import re
 
 # Set up the Streamlit page configuration
@@ -37,15 +37,15 @@ if "messages" not in st.session_state:
 @st.cache_resource(show_spinner=False)
 def initialize_pinecone():
     try:
-        # Initialize Pinecone
-        pinecone.init(
-            api_key=PINECONE_API_KEY,
-            environment=PINECONE_ENVIRONMENT
-        )
+        # Initialize Pinecone with new method
+        pc = Pinecone(api_key=PINECONE_API_KEY)
 
-        # Connect to the existing index
+        # Get the index
+        index = pc.Index("amcbots")
+
+        # Connect to the existing index using PineconeVectorStore
         vector_store = PineconeVectorStore(
-            pinecone_index=pinecone.Index("amcbots")
+            pinecone_index=index
         )
 
         # Create service context
