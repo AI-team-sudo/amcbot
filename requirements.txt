@@ -1,5 +1,4 @@
-llama-index
-pinecone-client
 streamlit
+pinecone-client
 openai
-setuptools
+python-dotenv
