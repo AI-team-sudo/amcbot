@@ -2,3 +2,4 @@ streamlit
 openai 
 pinecone-client 
 llama-index
+llama_index.vector_stores
