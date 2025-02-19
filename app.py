@@ -9,99 +9,145 @@ import math
 # Debug mode
 DEBUG = st.sidebar.checkbox("Debug Mode", False)
 
-# System prompt definition
-system_prompt = """You are an authoritative expert on the GPMC Act and the Ahmedabad Municipal Corporation.
-Your responses should be:
-1. Comprehensive and detailed
-2. Include step-by-step procedures when applicable
-3. Quote relevant sections directly from the GPMC Act
-4. Provide specific references (section numbers, chapters, and page numbers)
-5. Break down complex processes into numbered steps
-6. Include any relevant timelines or deadlines
-7. Mention any prerequisites or requirements
-8. Highlight important caveats or exceptions
+# System prompt - shortened but effective
+system_prompt = """You are an expert on Gujarat Tax Law and AMC regulations. Provide:
+1. Clear, concise answers with relevant citations
+2. Step-by-step procedures when needed
+3. References in [Source: Document, Page X] format
+4. Important deadlines and requirements
+Structure responses with headers and bullet points as needed."""
 
-For every fact or statement, include a reference to the source document and page number in this format:
-[Source: Document_Name, Page X]
-
-Always structure your responses in a clear, organized manner using:
-- Bullet points for lists
-- Numbered steps for procedures
-- Bold text for important points
-- Separate sections with clear headings"""
-
-# Initialize OpenAI client
+# Initialize clients
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
-# Initialize Pinecone
 pc = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
-index = pc.Index(st.secrets["PINECONE_INDEX_NAME"])
+index = pc.Index("gujtaxlaw")
 
-def get_embedding(text: str) -> List[float]:
-    """Get embedding for the input text using OpenAI's embedding model."""
-    response = client.embeddings.create(
-        input=text,
-        model="text-embedding-ada-002"
-    )
-    return response.data[0].embedding
+def chunk_text(text: str, max_tokens: int = 1000) -> List[str]:
+    """Split text into smaller chunks with stricter token limits."""
+    chars_per_chunk = max_tokens * 4
+    words = text.split()
+    chunks = []
+    current_chunk = []
+    current_length = 0
 
-def search_pinecone(query: str, k: int = 3):
-    """Search Pinecone index with embedded query."""
-    query_embedding = get_embedding(query)
-    results = index.query(
-        vector=query_embedding,
-        top_k=k,
-        include_metadata=True
-    )
-    return results
+    for word in words:
+        word_length = len(word) + 1
+        if current_length + word_length > chars_per_chunk:
+            chunks.append(' '.join(current_chunk))
+            current_chunk = [word]
+            current_length = word_length
+        else:
+            current_chunk.append(word)
+            current_length += word_length
 
-def translate_text(text: str, target_lang: str) -> str:
-    """Translate text to target language using deep-translator with error handling."""
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+
+    return chunks
+
+def get_embedding(text: str, max_retries: int = 3) -> List[float]:
+    """Get embedding with retry logic."""
+    for attempt in range(max_retries):
+        try:
+            if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in text):
+                text = translate_text(text, 'en')
+            response = client.embeddings.create(
+                input=text,
+                model="text-embedding-ada-002"
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(1)
+
+def summarize_context(context: str, max_tokens: int = 800) -> str:
+    """Summarize long context to fit within token limits."""
+    try:
+        messages = [
+            {"role": "system", "content": "Summarize the following text concisely while preserving key information:"},
+            {"role": "user", "content": context}
+        ]
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.3,
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        if DEBUG:
+            st.error(f"Summarization error: {str(e)}")
+        return context[:max_tokens * 4]
+
+def search_pinecone(query: str, k: int = 2):
+    """Search Pinecone with reduced results."""
+    try:
+        query_embedding = get_embedding(query)
+        results = index.query(
+            vector=query_embedding,
+            top_k=k,
+            include_metadata=True
+        )
+        return results
+    except Exception as e:
+        if DEBUG:
+            st.error(f"Pinecone search error: {str(e)}")
+        return None
+
+def translate_text(text: str, target_lang: str, chunk_size: int = 3000) -> str:
+    """Improved translation with chunking."""
     try:
         translator = GoogleTranslator(source='auto', target=target_lang)
 
-        # Add retry mechanism
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                # Split text into smaller chunks if it's too long
-                max_chunk_size = 4000  # Google Translate limit
-                if len(text) > max_chunk_size:
-                    chunks = [text[i:i+max_chunk_size]
-                            for i in range(0, len(text), max_chunk_size)]
-                    translated_chunks = []
-                    for chunk in chunks:
-                        translated_chunk = translator.translate(chunk)
-                        translated_chunks.append(translated_chunk)
-                    return ' '.join(translated_chunks)
-                else:
-                    return translator.translate(text)
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise e
-                time.sleep(1)  # Wait before retrying
+        if len(text) <= chunk_size:
+            return translator.translate(text)
 
+        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        translated_chunks = []
+
+        for chunk in chunks:
+            translated_chunk = translator.translate(chunk)
+            translated_chunks.append(translated_chunk)
+            time.sleep(0.5)
+
+        return ' '.join(translated_chunks)
     except Exception as e:
-        raise Exception(f"Translation failed: {str(e)}")
+        if DEBUG:
+            st.error(f"Translation error: {str(e)}")
+        return text
 
 def generate_response(query: str, context: str, system_prompt: str):
-    """Generate response using OpenAI with context and system prompt."""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"}
-    ]
+    """Generate response with stricter context handling."""
+    try:
+        # Summarize context if too long
+        context_tokens = len(context) // 4
+        if context_tokens > 1000:
+            context = summarize_context(context)
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        temperature=0.7,
-        max_tokens=1000
-    )
-    return response.choices[0].message.content
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Context: {context[:4000]}\n\nQuestion: {query[:500]}"}
+        ]
+
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000
+        )
+
+        response_text = response.choices[0].message.content
+        return translate_text(response_text, 'gu')
+    except Exception as e:
+        if DEBUG:
+            st.error(f"Response generation error: {str(e)}")
+        return "માફ કરશો, જવાબ તૈયાર કરવામાં મુશ્કેલી આવી છે. કૃપા કરીને ફરી પ્રયાસ કરો."
 
 # Streamlit UI
-st.title("Gujarat Municipal Act Assistant")
-st.write("Ask any question about the GPMC Act and Ahmedabad Municipal Corporation")
+st.title("ગુજરાત કર કાયદો સહાયક")
+st.write("કર કાયદા વિશે કોઈપણ પ્રશ્ન પૂછો")
 
 # Initialize chat history
 if 'messages' not in st.session_state:
@@ -113,80 +159,35 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Chat input and processing
-if prompt := st.chat_input("What would you like to know?"):
-    # Check if input is in Gujarati and translate to English if needed
-    if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in prompt):
-        with st.spinner('Translating your question...'):
-            english_prompt = translate_text(prompt, 'en')
-            # Display original Gujarati query and its English translation
-            with st.chat_message("user"):
-                st.markdown(f"Original Query (ગુજરાતી): {prompt}")
-                st.markdown(f"Translated Query (English): {english_prompt}")
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            prompt = english_prompt
-    else:
-        # Display original English query
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})
+if prompt := st.chat_input("તમે શું જાણવા માંગો છો?"):
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Search Pinecone and get relevant context
-    with st.spinner('Searching knowledge base...'):
-        search_results = search_pinecone(prompt)
-        context = "\n".join([result.metadata.get('text', '') for result in search_results.matches])
+    with st.spinner('પ્રક્રિયા કરી રહ્યા છીએ...'):
+        # Translate to English if needed
+        search_prompt = translate_text(prompt, 'en') if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in prompt) else prompt
 
- 
-    # Generate response
-    with st.chat_message("assistant"):
-        with st.spinner('Generating response...'):
-            response = generate_response(prompt, context, system_prompt)
+        # Search and generate response
+        search_results = search_pinecone(search_prompt)
+        if search_results:
+            # Limit context size more aggressively
+            context = " ".join([result.metadata.get('text', '')[:2000]
+                              for result in search_results.matches])
+            response = generate_response(search_prompt, context, system_prompt)
+        else:
+            response = "માફ કરશો, હાલમાં માહિતી મેળવવામાં મુશ્કેલી આવી રહી છે. કૃપા કરીને થોડી વાર પછી ફરી પ્રયાસ કરો."
 
-        # Create container for response and translation
-        response_container = st.container()
-
-        with response_container:
-            # Display original response
-            st.markdown("### English Response:")
+        with st.chat_message("assistant"):
             st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
 
-            # Create a key for managing translation state
-            translation_key = f"translate_{len(st.session_state.messages)}"
-
-            # Initialize translation state if not exists
-            if f"translated_{translation_key}" not in st.session_state:
-                st.session_state[f"translated_{translation_key}"] = False
-
-            # Translation button
-            if st.button("ગુજરાતી માં વાંચો 🔄", key=translation_key):
-                st.session_state[f"translated_{translation_key}"] = True
-
-            # Show translation if button was clicked
-            if st.session_state[f"translated_{translation_key}"]:  # Fixed syntax error here
-                try:
-                    with st.spinner('Translating to Gujarati...'):
-                        gujarati_response = translate_text(response, 'gu')
-                        st.markdown("### ગુજરાતી અનુવાદ:")
-                        st.markdown(gujarati_response)
-
-                        if DEBUG:
-                            st.write("Debug Info:")
-                            st.write(f"Response length: {len(response)}")
-                            st.write(f"Translation attempt for key: {translation_key}")
-                except Exception as e:
-                    st.error(f"Translation failed: {str(e)}")
-                    st.error("Please try again or contact support if the issue persists.")
-
-        st.session_state.messages.append({"role": "assistant", "content": response})
-   
-
-# Sidebar with additional information
+# Sidebar
 with st.sidebar:
-    st.header("About")
-    st.write("This chatbot provides information about the Gujarat Municipal Act and Ahmedabad Municipal Corporation.")
-    st.write("It uses AI to search through the official documentation and provide accurate responses with references.")
+    st.header("વિશે")
+    st.write("આ ચેટબોટ ગુજરાત કર કાયદા અને અમદાવાદ મ્યુનિસિપલ કોર્પોરેશન વિશે માહિતી પ્રદાન કરે છે.")
     st.write("""
-    Language Features:
-    - You can ask questions in English or Gujarati
-    - If you ask in Gujarati, it will be automatically translated to English
-    - Click the 'ગુજરાતી માં વાંચો 🔄' button to see responses in Gujarati
+    ભાષા સુવિધાઓ:
+    - ગુજરાતી અથવા અંગ્રેજીમાં પ્રશ્નો
+    - ગુજરાતીમાં જવાબો
     """)
