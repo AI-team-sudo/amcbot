@@ -2,6 +2,7 @@ import streamlit as st
 from pinecone import Pinecone
 from openai import OpenAI
 from typing import List
+from deep_translator import GoogleTranslator
 
 # System prompt definition
 system_prompt = """You are an authoritative expert on the GPMC Act and the Ahmedabad Municipal Corporation.
@@ -49,6 +50,14 @@ def search_pinecone(query: str, k: int = 3):
     )
     return results
 
+def translate_text(text: str, target_lang: str) -> str:
+    """Translate text to target language using deep-translator."""
+    try:
+        translator = GoogleTranslator(source='auto', target=target_lang)
+        return translator.translate(text)
+    except Exception as e:
+        return f"Translation Error: {str(e)}"
+
 def generate_response(query: str, context: str, system_prompt: str):
     """Generate response using OpenAI with context and system prompt."""
     messages = [
@@ -77,12 +86,22 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
+# Chat input and processing
 if prompt := st.chat_input("What would you like to know?"):
-    # Display user message
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    # Check if input is in Gujarati and translate to English if needed
+    if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in prompt):
+        english_prompt = translate_text(prompt, 'en')
+        # Display original Gujarati query and its English translation
+        with st.chat_message("user"):
+            st.markdown(f"Original Query (ગુજરાતી): {prompt}")
+            st.markdown(f"Translated Query (English): {english_prompt}")
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        prompt = english_prompt
+    else:
+        # Display original English query
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
     # Search Pinecone and get relevant context
     search_results = search_pinecone(prompt)
@@ -91,7 +110,19 @@ if prompt := st.chat_input("What would you like to know?"):
     # Generate response
     with st.chat_message("assistant"):
         response = generate_response(prompt, context, system_prompt)
-        st.markdown(response)
+
+        # Create columns for response and translation button
+        col1, col2 = st.columns([4, 1])
+
+        with col1:
+            st.markdown(response)
+
+        with col2:
+            if st.button("ગુજરાતી 🔄", key=f"translate_{len(st.session_state.messages)}"):
+                gujarati_response = translate_text(response, 'gu')
+                st.markdown("ગુજરાતી અનુવાદ (Gujarati Translation):")
+                st.markdown(gujarati_response)
+
     st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Sidebar with additional information
@@ -99,3 +130,9 @@ with st.sidebar:
     st.header("About")
     st.write("This chatbot provides information about the Gujarat Municipal Act and Ahmedabad Municipal Corporation.")
     st.write("It uses AI to search through the official documentation and provide accurate responses with references.")
+    st.write("""
+    Language Features:
+    - You can ask questions in English or Gujarati
+    - If you ask in Gujarati, it will be automatically translated to English
+    - Click the 'ગુજરાતી 🔄' button to see responses in Gujarati
+    """)
