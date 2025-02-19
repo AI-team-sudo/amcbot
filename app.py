@@ -1,22 +1,22 @@
 import streamlit as st
 from pinecone import Pinecone
-import openai
+from openai import OpenAI
 from typing import List
 
-# Initialize OpenAI with st.secrets
-openai.api_key = st.secrets["openai_key"]
+# Initialize OpenAI client
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # Initialize Pinecone
-pc = Pinecone(api_key=st.secrets["pinecone_api_key"])
-index = pc.Index("amcbots")
+pc = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
+index = pc.Index(st.secrets["PINECONE_INDEX_NAME"])
 
 def get_embedding(text: str) -> List[float]:
     """Get embedding for the input text using OpenAI's embedding model."""
-    response = openai.Embedding.create(
+    response = client.embeddings.create(
         input=text,
         model="text-embedding-ada-002"
     )
-    return response['data'][0]['embedding']
+    return response.data[0].embedding
 
 def search_pinecone(query: str, k: int = 3):
     """Search Pinecone index with embedded query."""
@@ -35,13 +35,13 @@ def generate_response(query: str, context: str, system_prompt: str):
         {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"}
     ]
 
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=messages,
         temperature=0.7,
         max_tokens=1000
     )
-    return response.choices[0].message['content']
+    return response.choices[0].message.content
 
 # Streamlit UI
 st.title("Gujarat Municipal Act Assistant")
