@@ -1,11 +1,12 @@
 import streamlit as st
 import openai
 from llama_index.core import VectorStoreIndex, Settings
-from llama_index.vector_stores import PineconeVectorStore  # Corrected import
+from llama_index.core.vector_stores import PineconeVectorStore  # Corrected import
 from llama_index.llms.openai import OpenAI
 import pinecone
 import re
 
+# Rest of the code remains the same...
 # Set up the Streamlit page configuration
 st.set_page_config(
     page_title="Rag Based Bot for GPMC using Pinecone",
