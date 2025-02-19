@@ -3,3 +3,5 @@ pinecone-client
 openai
 python-dotenv
 deep-translator
+time
+math
