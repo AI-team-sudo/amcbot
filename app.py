@@ -1,7 +1,7 @@
 import streamlit as st
 import openai
 from llama_index.core import VectorStoreIndex, Settings
-from llama_index.vector_stores.pinecone import PineconeVectorStore
+from llama_index.vector_stores import PineconeVectorStore  # Corrected import
 from llama_index.llms.openai import OpenAI
 import pinecone
 import re
@@ -17,6 +17,7 @@ st.set_page_config(
 # Initialize API keys from Streamlit secrets
 openai.api_key = st.secrets.get("openai_key", None)
 PINECONE_API_KEY = st.secrets.get("pinecone_api_key", None)
+PINECONE_ENVIRONMENT = st.secrets.get("pinecone_environment", "gcp-starter")
 
 if not openai.api_key or not PINECONE_API_KEY:
     st.error("API keys are missing. Please add them to the Streamlit secrets.")
