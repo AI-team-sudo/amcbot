@@ -9,18 +9,18 @@ import math
 # Debug mode
 DEBUG = st.sidebar.checkbox("Debug Mode", False)
 
-# System prompt - shortened but effective
-system_prompt = """You are an expert on Gujarat Tax Law and AMC regulations. Provide:
-1. Clear, concise answers with relevant citations
+# System prompt - modified for AMC GPMC
+system_prompt = """You are an expert on AMC and GPMC regulations. Provide:
+1. Clear, concise answers with relevant citations from GPMC Act and AMC regulations
 2. Step-by-step procedures when needed
-3. References in [Source: Document, Page X] format
-4. Important deadlines and requirements
+3. References in [Source: GPMC Act/AMC Regulation, Section X] format
+4. Important deadlines and compliance requirements
 Structure responses with headers and bullet points as needed."""
 
 # Initialize clients
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 pc = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
-index = pc.Index("gujtaxlaw")
+index = pc.Index("amcbots")
 
 def chunk_text(text: str, max_tokens: int = 1000) -> List[str]:
     """Split text into smaller chunks with stricter token limits."""
@@ -138,16 +138,15 @@ def generate_response(query: str, context: str, system_prompt: str):
             max_tokens=1000
         )
 
-        response_text = response.choices[0].message.content
-        return translate_text(response_text, 'gu')
+        return response.choices[0].message.content
     except Exception as e:
         if DEBUG:
             st.error(f"Response generation error: {str(e)}")
-        return "માફ કરશો, જવાબ તૈયાર કરવામાં મુશ્કેલી આવી છે. કૃપા કરીને ફરી પ્રયાસ કરો."
+        return "Sorry, there was an error generating the response. Please try again."
 
 # Streamlit UI
-st.title("ગુજરાત કર કાયદો સહાયક")
-st.write("કર કાયદા વિશે કોઈપણ પ્રશ્ન પૂછો")
+st.title("AMC GPMC Act Assistant")
+st.write("Ask any question about the Gujarat Provincial Municipal Corporations Act and AMC regulations")
 
 # Initialize chat history
 if 'messages' not in st.session_state:
@@ -159,35 +158,4 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Chat input and processing
-if prompt := st.chat_input("તમે શું જાણવા માંગો છો?"):
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    with st.spinner('પ્રક્રિયા કરી રહ્યા છીએ...'):
-        # Translate to English if needed
-        search_prompt = translate_text(prompt, 'en') if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in prompt) else prompt
-
-        # Search and generate response
-        search_results = search_pinecone(search_prompt)
-        if search_results:
-            # Limit context size more aggressively
-            context = " ".join([result.metadata.get('text', '')[:2000]
-                              for result in search_results.matches])
-            response = generate_response(search_prompt, context, system_prompt)
-        else:
-            response = "માફ કરશો, હાલમાં માહિતી મેળવવામાં મુશ્કેલી આવી રહી છે. કૃપા કરીને થોડી વાર પછી ફરી પ્રયાસ કરો."
-
-        with st.chat_message("assistant"):
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
-# Sidebar
-with st.sidebar:
-    st.header("વિશે")
-    st.write("આ ચેટબોટ ગુજરાત કર કાયદા અને અમદાવાદ મ્યુનિસિપલ કોર્પોરેશન વિશે માહિતી પ્રદાન કરે છે.")
-    st.write("""
-    ભાષા સુવિધાઓ:
-    - ગુજરાતી અથવા અંગ્રેજીમાં પ્રશ્નો
-    - ગુજરાતીમાં જવાબો
-    """)
+if prompt := st.chat_input("What would you like t
