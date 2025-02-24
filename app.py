@@ -10,12 +10,12 @@ import math
 DEBUG = st.sidebar.checkbox("Debug Mode", False)
 
 # System prompt - modified for AMC GPMC
-system_prompt = """You are an expert on AMC and GPMC regulations. Provide:
-1. Clear, concise answers with relevant citations from GPMC Act and AMC regulations
-2. Step-by-step procedures when needed
-3. References in [Source: GPMC Act/AMC Regulation, Section X] format
-4. Important deadlines and compliance requirements
-Structure responses with headers and bullet points as needed."""
+system_prompt = """You are an expert on AMC and GPMC regulations, Gujarat tax law, and a compilation of circulars. Provide:
+
+Clear, concise answers with relevant citations from the GPMC Act, AMC regulations, Gujarat tax law, and circulars.
+Step-by-step procedures when needed.
+References in the format: [Source: GPMC Act/AMC Regulation, Section X], [Source: Gujarat Tax Law, Section X], or [Source: Circular No. X, Date].
+Important deadlines and compliance requirements."""
 
 # Initialize clients
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
